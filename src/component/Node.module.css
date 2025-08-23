@@ -1,0 +1,59 @@
+.node {
+  position: absolute;
+  padding: 10px 15px;
+  background-color: #e0e0e0;
+  border: 2px solid #a0a0a0;
+  border-radius: 8px;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+  min-width: 100px;
+  text-align: center;
+  z-index: 10;
+  transition: box-shadow 0.2s;
+}
+
+.node:hover {
+    box-shadow: 4px 4px 10px rgba(0,0,0,0.3);
+}
+
+.text {
+  padding-right: 20px; /* 为按钮留出空间 */
+}
+
+.input {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px;
+  box-sizing: border-box;
+}
+
+.controls {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: flex;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.node:hover .controls {
+ opacity: 1;
+}
+
+.controls button {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #777;
+  background-color: white;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+}
+
+.controls button:hover {
+  background-color: #f0f0f0;
+}
