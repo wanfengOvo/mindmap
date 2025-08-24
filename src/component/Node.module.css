@@ -9,6 +9,15 @@
   text-align: center;
   z-index: 10;
   transition: box-shadow 0.2s;
+  pointer-events: auto;
+  display: flex; 
+  flex-direction: column; 
+  justify-content: center; 
+  align-items: center; 
+  padding: 15px 20px; 
+  min-width: 100px; 
+  height: auto; 
+  box-sizing: border-box; 
 }
 
 .node:hover {
@@ -56,4 +65,75 @@
 
 .controls button:hover {
   background-color: #f0f0f0;
+}
+
+.node.selected {
+  border-color: #007bff;
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+.collapseButton {
+  position: absolute;
+  bottom: -10px; /* 定位在节点下方中间 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: white;
+  border: 1px solid #999;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  z-index: 11; /* 确保在节点之上 */
+  opacity: 0.6;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.node:hover .collapseButton {
+  opacity: 1;
+}
+
+.collapseButton:hover {
+  background-color: #f0f0f0;
+}
+
+
+.contentWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* 图标和文字之间的间距 */
+}
+
+/* 新增：图标样式 */
+.icon {
+  font-size: 1.2em; /* 让图标比文字稍大一点 */
+  line-height: 1;
+}
+
+.notesIndicator {
+   position: absolute;
+  bottom: -12px; /* 移动到节点下方 */
+  right: -12px;  /* 移动到节点右侧 */
+  width: 24px;
+  height: 24px;
+  background-color: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: transform 0.2s;
+}
+
+.notesIndicator:hover {
+  transform: scale(1.1);
 }

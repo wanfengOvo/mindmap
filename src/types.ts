@@ -8,4 +8,22 @@ export interface MindMapNode {
   };
   children: MindMapNode[]; // 子节点数组
   parentId?: string;      // 父节点ID (根节点没有)
+  isCollapsed?: boolean;
+  icon?: string; // 用于存储图标的标识符 (例如 Emoji)
+  style?: {
+    backgroundColor?: string;
+    color?: string;
+    fontSize?: number;
+  };
+
+  edgeStyle?: {
+    type?: 'curved' | 'straight'; // 连线类型
+    dashed?: boolean;            // 是否为虚线
+  };
+
+  size?: {
+    width: number;
+    height: number;
+  };
+  notes?: string;
 }

@@ -1,21 +1,44 @@
+/* 外层视口容器 */
 .mindMapCanvas {
   width: 100%;
-  height: 90vh; /* 留出顶部标题空间 */
+  height: 100vh;
   position: relative;
-  overflow: hidden; /* 在后续可以添加平移和缩放功能 */
+  overflow: hidden;
   background-color: #f9f9f9;
   background-image:
     linear-gradient(rgba(0,0,0,.08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0,0,0,.08) 1px, transparent 1px);
   background-size: 20px 20px;
+  user-select: none;
 }
 
-.svgCanvas {
+/* 内层场景容器 */
+.mindMapScene {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  transform-origin: 0 0;
+  /* 【核心修改】让场景层穿透鼠标事件 */
+  pointer-events: none;
+}
+
+/* SVG 和 Node 的容器层 */
+.svgLayer,
+.nodeLayer {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none; /* 让鼠标事件穿透SVG，到达下面的节点 */
+  /* pointer-events: none; 继承自父级 .mindMapScene */
+}
+
+/* SVG 层在下 */
+.svgLayer {
   z-index: 1;
+}
+
+/* Node 层在上 */
+.nodeLayer {
+  z-index: 2;
 }
