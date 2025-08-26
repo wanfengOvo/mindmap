@@ -6,12 +6,13 @@ import { v4 as uuidv4 } from 'uuid';
 
 // 递归地为节点及其所有子节点生成新的ID
 const deepCopyNodeWithNewIds = (node: MindMapNode): MindMapNode => {
+  const newId = uuidv4(); // 1. 先生成新的 ID
   const newNode: MindMapNode = {
     ...node,
-    id: uuidv4(),
+    id: newId, // 2. 使用新 ID
     children: node.children.map(child => {
         const newChild = deepCopyNodeWithNewIds(child);
-        newChild.parentId = newNode.id; // 更新子节点的parentId
+        newChild.parentId = newId; // 3. 将新 ID 应用于子节点
         return newChild;
     })
   };
@@ -19,7 +20,7 @@ const deepCopyNodeWithNewIds = (node: MindMapNode): MindMapNode => {
 };
 
 // 在树中查找并更新节点
-const updateNodeInTree = (
+export const updateNodeInTree = (
   rootNode: MindMapNode,
   nodeId: string,
   updateFn: (node: MindMapNode) => MindMapNode
@@ -34,7 +35,7 @@ const updateNodeInTree = (
 };
 
 // 在树中查找节点
-const findNodeInTree = (node: MindMapNode, id: string): MindMapNode | null => {
+export const findNodeInTree = (node: MindMapNode, id: string): MindMapNode | null => {
     if (node.id === id) return node;
     for (const child of node.children) {
         const found = findNodeInTree(child, id);
@@ -43,7 +44,7 @@ const findNodeInTree = (node: MindMapNode, id: string): MindMapNode | null => {
     return null;
 }
 
-// --- State, Action, Reducer 定义 ---
+
 
 interface ViewState {
   x: number;
@@ -56,11 +57,13 @@ interface ViewState {
 interface AppState {
   history: MindMapNode[];
   currentIndex: number;
-  selectedNodeId: string | null;
+  selectedNodeIds: string[];
   clipboard: MindMapNode | null;
   isCoalescing: boolean; // 是否正在合并操作 (例如拖拽)
-  viewState: ViewState; // 新增：视图状态
+  viewState: ViewState; // 视图状态
   activeNotesNodeId: string | null;
+  dropTargetId: string | null
+  isPreviewMode: boolean
 }
 
 // 定义 Action 类型
@@ -68,13 +71,17 @@ type Action =
   | { type: 'OPERATION'; payload: MindMapNode }
   | { type: 'UNDO' }
   | { type: 'REDO' }
-  | { type: 'SET_SELECTED_NODE'; payload: { id: string | null } }
+  | { type: 'SET_SELECTED_NODES'; payload: string[] }//选中的节点
+  | { type: 'DELETE_SELECTED_NODES' } 
   | { type: 'COPY_NODE' }
   | { type: 'PASTE_NODE' }
   | { type: 'START_COALESCING' }
   | { type: 'END_COALESCING' }
-  | { type: 'SET_VIEW_STATE'; payload: ViewState } // 新增 Action
-  | { type: 'SET_ACTIVE_NOTES_NODE'; payload: string | null };
+  | { type: 'SET_VIEW_STATE'; payload: ViewState } 
+  | { type: 'SET_ACTIVE_NOTES_NODE'; payload: string | null }
+  | { type: 'SET_DROP_TARGET'; payload: string | null }
+  | { type: 'CUT_NODES' }
+  | { type: 'TOGGLE_PREVIEW_MODE' }
 
 export const LOCAL_STORAGE_KEY = 'mindMapAppState';
 
@@ -91,11 +98,13 @@ const initialNode: MindMapNode = {
 export const initialState: AppState = {
   history: [initialNode],
   currentIndex: 0,
-  selectedNodeId: 'root',
+  selectedNodeIds: [],
   clipboard: null,
   isCoalescing: false,
   viewState: { x: 0, y: 0, scale: 1 }, // 新增
   activeNotesNodeId: null,
+  dropTargetId: null,
+  isPreviewMode: false
 };
 
 
@@ -104,26 +113,22 @@ export const initializer = (initialValue: AppState): AppState => {
     const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (savedStateJSON) {
       const savedState = JSON.parse(savedStateJSON);
-      // 为了更好的体验，我们在加载时重置一些临时的UI状态
+      const mergedState = { ...initialValue, ...savedState };
       return {
-        ...savedState,
-        selectedNodeId: null,
+        ...mergedState,
+        selectedNodeIds: [],
         activeNotesNodeId: null,
         isCoalescing: false,
+        dropTargetId: null,
       };
     }
-  } catch (error) {
-    console.error("解析本地存储数据失败:", error);
-    // 如果解析失败，返回默认的初始状态
-    return initialValue;
-  }
+  } catch (error) { console.error("解析本地存储数据失败:", error); }
   return initialValue;
 };
 
-
 // Reducer 函数
 export const mindMapReducer = (state: AppState, action: Action): AppState => {
-  const { history, currentIndex, selectedNodeId, clipboard, isCoalescing } = state;
+  const { history, currentIndex, selectedNodeIds, clipboard, isCoalescing } = state;
   const currentMindMap = history[currentIndex];
 
   switch (action.type) {
@@ -166,43 +171,54 @@ export const mindMapReducer = (state: AppState, action: Action): AppState => {
 
     case 'UNDO': {
       if (currentIndex > 0) {
-        return { ...state, currentIndex: currentIndex - 1, selectedNodeId: null };
+        return { ...state, currentIndex: currentIndex - 1, selectedNodeIds: [] };
       }
       return state;
     }
 
     case 'REDO': {
       if (currentIndex < history.length - 1) {
-        return { ...state, currentIndex: currentIndex + 1, selectedNodeId: null };
+        return { ...state, currentIndex: currentIndex + 1, selectedNodeIds: [] };
       }
       return state;
     }
 
-    case 'SET_SELECTED_NODE': {
-        return { ...state, selectedNodeId: action.payload.id };
+    case 'SET_SELECTED_NODES': {
+        return { ...state, selectedNodeIds: action.payload };
+    }
+
+    case 'DELETE_SELECTED_NODES': {
+        if (selectedNodeIds.length === 0) return state;
+        const idsToDelete = selectedNodeIds.filter(id => id !== 'root');
+        if (idsToDelete.length === 0) return state;
+        const removeNodesFromTree = (rootNode: MindMapNode, idsToRemove: string[]): MindMapNode => ({
+            ...rootNode,
+            children: rootNode.children
+                .filter(child => !idsToRemove.includes(child.id))
+                .map(child => removeNodesFromTree(child, idsToRemove))
+        });
+        const newTree = removeNodesFromTree(currentMindMap, idsToDelete);
+        const newHistory = state.history.slice(0, state.currentIndex + 1);
+        newHistory.push(newTree);
+        return { ...state, history: newHistory, currentIndex: newHistory.length - 1, selectedNodeIds: [] };
     }
 
     case 'COPY_NODE': {
-        if (!selectedNodeId) return state;
-        const nodeToCopy = findNodeInTree(currentMindMap, selectedNodeId);
+        if (selectedNodeIds.length === 0) return state;
+        const nodeToCopy = findNodeInTree(currentMindMap, selectedNodeIds[0]);
         return nodeToCopy ? { ...state, clipboard: { ...nodeToCopy } } : state;
     }
-    
     case 'PASTE_NODE': {
-        if (!clipboard || !selectedNodeId) return state;
+        if (!clipboard || selectedNodeIds.length === 0) return state;
+        const targetParentId = selectedNodeIds[0];
         const copiedNodeWithNewIds = deepCopyNodeWithNewIds(clipboard);
-        const newMindMap = updateNodeInTree(currentMindMap, selectedNodeId, (parentNode) => ({
+        const newMindMap = updateNodeInTree(currentMindMap, targetParentId, (parentNode) => ({
             ...parentNode,
             children: [...parentNode.children, copiedNodeWithNewIds],
         }));
-        
         const newHistory = history.slice(0, currentIndex + 1);
         newHistory.push(newMindMap);
-        return {
-            ...state,
-            history: newHistory,
-            currentIndex: newHistory.length - 1,
-        };
+        return { ...state, history: newHistory, currentIndex: newHistory.length - 1 };
     }
 
     case 'SET_VIEW_STATE':
@@ -215,6 +231,51 @@ export const mindMapReducer = (state: AppState, action: Action): AppState => {
           return { ...state, activeNotesNodeId: null };
       }
     return { ...state, activeNotesNodeId: action.payload };
+
+     case 'SET_DROP_TARGET':
+        // 这是一个临时的UI状态，不计入历史
+        return { ...state, dropTargetId: action.payload };
+    
+
+     case 'CUT_NODES': {
+      // 如果没有选中节点，或只选中了根节点，则不执行任何操作
+      if (selectedNodeIds.length === 0) return state;
+      const idsToCut = selectedNodeIds.filter(id => id !== 'root');
+      if (idsToCut.length === 0) return state;
+
+      // 1. 复制部分：将第一个被选中的节点放入剪贴板
+      const firstSelectedId = idsToCut[0];
+      const nodeToCut = findNodeInTree(currentMindMap, firstSelectedId);
+      if (!nodeToCut) return state; // 安全检查
+
+      // 2. 删除部分：从树中移除所有被选中的节点
+      const removeNodesFromTree = (rootNode: MindMapNode, idsToRemove: string[]): MindMapNode => ({
+          ...rootNode,
+          children: rootNode.children
+              .filter(child => !idsToRemove.includes(child.id))
+              .map(child => removeNodesFromTree(child, idsToRemove))
+      });
+      const newTree = removeNodesFromTree(currentMindMap, idsToCut);
+
+      // 3. 将新树状态计入历史，并更新剪贴板
+      const newHistory = state.history.slice(0, state.currentIndex + 1);
+      newHistory.push(newTree);
+      return {
+          ...state,
+          history: newHistory,
+          currentIndex: newHistory.length - 1,
+          clipboard: { ...nodeToCut }, // 更新剪贴板
+          selectedNodeIds: [], // 清空选择
+      };
+    }
+    
+    case 'TOGGLE_PREVIEW_MODE':
+      return {
+        ...state,
+        isPreviewMode: !state.isPreviewMode,
+        // 进入预览时，清空选择，确保一个干净的视图
+        selectedNodeIds: [],
+      };
     
     default:
       return state;

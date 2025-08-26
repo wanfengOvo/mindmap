@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "html-to-image": "^1.11.13",
+    "dom-to-image-more": "^3.7.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

@@ -1,26 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useMindMap } from '../context/MindMapContext';
-import { type MindMapNode } from '../types';
 import styles from './NotesPanel.module.css';
+import { updateNodeInTree,findNodeInTree } from '../context/MindMapContext';
 
-// 辅助函数
-const updateNodeInTree = (rootNode: MindMapNode, nodeId: string, updateFn: (node: MindMapNode) => MindMapNode): MindMapNode => {
-    if (rootNode.id === nodeId) {
-        return updateFn(rootNode);
-    }
-    return {
-        ...rootNode,
-        children: rootNode.children.map(child => updateNodeInTree(child, nodeId, updateFn))
-    };
-};
-const findNodeInTree = (node: MindMapNode, id: string): MindMapNode | null => {
-    if (node.id === id) return node;
-    for (const child of node.children) {
-        const found = findNodeInTree(child, id);
-        if (found) return found;
-    }
-    return null;
-}
+
 
 
 const NotesPanel: React.FC = () => {

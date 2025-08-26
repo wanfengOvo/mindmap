@@ -3,22 +3,13 @@ import type { MindMapNode as NodeData } from '../types';
 import { useMindMap } from '../context/MindMapContext';
 import styles from './Node.module.css';
 import { v4 as uuidv4 } from 'uuid';
-
-
+import { updateNodeInTree } from '../context/MindMapContext';
+import { getAllNodes } from '../utils/util';
 const DEFAULT_NODE_WIDTH = 150;
 const DEFAULT_FONT_SIZE = 16;
 
-// --- 辅助函数 ---
 
-const updateNodeInTree = (rootNode: NodeData, nodeId: string, updateFn: (node: NodeData) => NodeData): NodeData => {
-    if (rootNode.id === nodeId) {
-        return updateFn(rootNode);
-    }
-    return {
-        ...rootNode,
-        children: rootNode.children.map(child => updateNodeInTree(child, nodeId, updateFn))
-    };
-};
+
 
 const removeNodeFromTree = (rootNode: NodeData, nodeId: string): NodeData => {
     return {
@@ -27,15 +18,49 @@ const removeNodeFromTree = (rootNode: NodeData, nodeId: string): NodeData => {
     };
 };
 
-// --- 组件定义 ---
+
+
+const isDescendant = (childId: string, parentNode: NodeData): boolean => {
+    if (parentNode.children.some(child => child.id === childId)) {
+        return true;
+    }
+    for (const child of parentNode.children) {
+        if (isDescendant(childId, child)) {
+            return true;
+        }
+    }
+    return false;
+};
+
+
+const detachNodeFromTree = (rootNode: NodeData, nodeId: string): { newTree: NodeData, detachedNode: NodeData | null } => {
+    let detachedNode: NodeData | null = null;
+    const searchAndRemove = (node: NodeData): NodeData => {
+        const newChildren = [];
+        for (const child of node.children) {
+            if (child.id === nodeId) {
+                detachedNode = child;
+            } else {
+                newChildren.push(searchAndRemove(child));
+            }
+        }
+        return { ...node, children: newChildren };
+    };
+    const newTree = searchAndRemove(rootNode);
+    return { newTree, detachedNode };
+};
+
+
+
 
 interface NodeProps {
   node: NodeData;
+  isHighlighted?: boolean;
 }
 
-const Node: React.FC<NodeProps> = ({ node }) => {
+const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
   const { state, dispatch, updateTree } = useMindMap();
-  const { history, currentIndex, selectedNodeId, viewState } = state;
+  const { history, currentIndex, selectedNodeIds, viewState,dropTargetId } = state;
   const currentMindMap = history[currentIndex];
 
   const [isDragging, setIsDragging] = useState(false);
@@ -49,11 +74,18 @@ const Node: React.FC<NodeProps> = ({ node }) => {
     setText(node.text);
   }, [node.text]);
 
-  // --- 事件处理器 ---
+
 
   const handleNodeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    dispatch({ type: 'SET_SELECTED_NODE', payload: { id: node.id } });
+    if (e.shiftKey) { // 按住 Shift 实现多选/取消选
+      const newSelection = selectedNodeIds.includes(node.id)
+        ? selectedNodeIds.filter(id => id !== node.id)
+        : [...selectedNodeIds, node.id];
+      dispatch({ type: 'SET_SELECTED_NODES', payload: newSelection });
+    } else { // 普通单击，只选中当前节点
+      dispatch({ type: 'SET_SELECTED_NODES', payload: [node.id] });
+    }
   };
 
   const handleDoubleClick = () => {
@@ -67,7 +99,7 @@ const Node: React.FC<NodeProps> = ({ node }) => {
 
     const rect = nodeRef.current.getBoundingClientRect();
     offset.current = {
-      // 2. 在计算初始偏移时，也必须考虑缩放
+      // 2. 【重要】在计算初始偏移时，也必须考虑缩放
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
@@ -97,16 +129,56 @@ const Node: React.FC<NodeProps> = ({ node }) => {
         y: targetY_scene / scale
     };
 
+    
+
     const newTree = updateNodeInTree(currentMindMap, node.id, n => ({ ...n, position: newPosition }));
     updateTree(newTree);
-}, [isDragging, currentMindMap, node.id, updateTree, viewState]);
+
+    const allNodes = getAllNodes(currentMindMap);
+    const validTargets = allNodes.filter(n => {
+        // 不能是自己，也不能是自己的后代
+        return n.id !== node.id && !isDescendant(n.id, node);
+    });
+
+    let targetFound = false;
+    for (const targetNode of validTargets) {
+        const targetElement = document.getElementById(`node-${targetNode.id}`); // 我们需要给节点加上ID
+        if (targetElement) {
+            const rect = targetElement.getBoundingClientRect();
+            if (e.clientX > rect.left && e.clientX < rect.right && e.clientY > rect.top && e.clientY < rect.bottom) {
+                dispatch({ type: 'SET_DROP_TARGET', payload: targetNode.id });
+                targetFound = true;
+                break;
+            }
+        }
+    }
+
+    if (!targetFound) {
+        dispatch({ type: 'SET_DROP_TARGET', payload: null });
+    }
+
+}, [isDragging, currentMindMap, node, viewState, updateTree, dispatch]);
 
  const handleMouseUp = useCallback(() => {
     if (isDragging) {
       dispatch({ type: 'END_COALESCING' });
+      if (dropTargetId) {
+          const { newTree: treeWithoutNode, detachedNode } = detachNodeFromTree(currentMindMap, node.id);
+          if (detachedNode) {
+              const finalTree = updateNodeInTree(treeWithoutNode, dropTargetId, parentNode => ({
+                  ...parentNode,
+                  children: [...parentNode.children, { ...detachedNode, parentId: parentNode.id }]
+              }));
+              // 作为一个独立的操作计入历史
+              updateTree(finalTree); 
+          }
+      }
+      
+      // 清理状态
+      dispatch({ type: 'SET_DROP_TARGET', payload: null });
       setIsDragging(false);
     }
-  }, [isDragging, dispatch]);
+  }, [isDragging, dispatch, dropTargetId, currentMindMap, node.id, updateTree]);
   
   useEffect(() => {
     if (isDragging) {
@@ -174,13 +246,21 @@ const Node: React.FC<NodeProps> = ({ node }) => {
   };
   // --- 渲染 ---
 
-  const isSelected = selectedNodeId === node.id;
-  const nodeClassName = `${styles.node} ${isSelected ? styles.selected : ''}`;
+  const isSelected = selectedNodeIds.includes(node.id);
+  const isDropTarget = dropTargetId === node.id;
+    const nodeClassName = `
+    ${styles.node} 
+    ${isSelected ? styles.selected : ''} 
+    ${isDropTarget ? styles.dropTarget : ''}
+    ${isHighlighted && !isSelected ? styles.pathHighlight : ''}
+  `;
+
 
   return (
     <div
+    id={`node-${node.id}`}
       ref={nodeRef}
-      className={nodeClassName}
+      className={nodeClassName.trim()}
       style={{
         top: node.position.y,
         left: node.position.x,

@@ -1,4 +1,5 @@
 .node {
+  /* ... 所有原有样式保持不变 ... */
   position: absolute;
   padding: 10px 15px;
   background-color: #e0e0e0;
@@ -9,14 +10,15 @@
   text-align: center;
   z-index: 10;
   transition: box-shadow 0.2s;
+  /* 【核心修改】让节点本身重新响应鼠标事件 */
   pointer-events: auto;
-  display: flex; 
-  flex-direction: column; 
-  justify-content: center; 
-  align-items: center; 
-  padding: 15px 20px; 
-  min-width: 100px; 
-  height: auto; 
+  display: flex; /* 新增 */
+  flex-direction: column; /* 新增 */
+  justify-content: center; /* 新增：垂直居中 */
+  align-items: center; /* 新增：水平居中 */
+  padding: 15px 20px; /* 调整内边距以适应更大的尺寸 */
+  min-width: 100px; /* 保持最小宽度 */
+  height: auto; /* 让高度自适应 */
   box-sizing: border-box; 
 }
 
@@ -136,4 +138,15 @@
 
 .notesIndicator:hover {
   transform: scale(1.1);
+}
+
+.dropTarget {
+  outline: 3px dashed #28a745; /* 绿色虚线外框 */
+  outline-offset: 4px;
+  box-shadow: 0 0 15px rgba(40, 167, 69, 0.5); /* 绿色光晕效果 */
+}
+
+.pathHighlight {
+  border-color: #7ab5ff;
+  background-color: #f0f6ff;
 }

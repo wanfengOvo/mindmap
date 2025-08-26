@@ -1,93 +1,214 @@
-import React, { useState, useRef, useEffect, useCallback, type JSX } from 'react';
+import React, { useState, useRef, useEffect, useCallback, type JSX, useMemo } from 'react';
 import { useMindMap } from '../context/MindMapContext';
-import { MindMapNode as NodeData } from '../types';
+import type { MindMapNode as NodeData } from '../types';
 import Node from './Node';
 import Edge from './Edge';
 import styles from './MindMap.module.css';
-import Toolbar from './Toolbar'; // 1. 在这里导入 Toolbar
-import * as htmlToImage from 'html-to-image'; // 2. 导入 html-to-image 库
+import Toolbar from './ToolBar';
+import Preview from './Preview';
+import { getAllNodes } from '../utils/util';
+export const DEFAULT_NODE_WIDTH = 150;
+export const DEFAULT_NODE_HEIGHT = 50;
 
 
-const getAllNodes = (node: NodeData): NodeData[] => {
-  let nodes = [node];
-  if (node.children && !node.isCollapsed) {
-    node.children.forEach(child => {
-      nodes = nodes.concat(getAllNodes(child));
-    });
-  }
-  return nodes;
+const findPathToNode = (root: NodeData, nodeId: string): string[] => {
+  const findPath = (currentNode: NodeData, path: string[]): string[] | null => {
+    const currentPath = [...path, currentNode.id];
+    if (currentNode.id === nodeId) {
+      return currentPath;
+    }
+    if (currentNode.children) {
+      for (const child of currentNode.children) {
+        const result = findPath(child, currentPath);
+        if (result) {
+          return result;
+        }
+      }
+    }
+    return null;
+  };
+  return findPath(root, []) || [];
 };
 
-// --- 辅助函数 (保持不变) ---
-const renderNodes = (node: NodeData): JSX.Element[] => {
-  const elements = [<Node key={node.id} node={node} />];
-  // 假设的折叠功能
-  if (!node.isCollapsed) {
-    node.children.forEach(child => {
-      elements.push(...renderNodes(child));
-    });
-  }
-  return elements;
-};
 
-const renderEdges = (node: NodeData): JSX.Element[] => {
-  const elements: JSX.Element[] = [];
-  if (!node.isCollapsed) {
-    node.children.forEach(child => {
-      elements.push(<Edge key={`${node.id}-${child.id}`} fromNode={node} toNode={child} />);
-      elements.push(...renderEdges(child));
-    });
-  }
-  return elements;
-};
 
 // --- 主组件 ---
 const MindMap: React.FC = () => {
- const { state, dispatch } = useMindMap();
-  const { history, currentIndex, viewState } = state;
+  const { state, dispatch } = useMindMap();
+  const { history, currentIndex, viewState, selectedNodeIds, isPreviewMode } = state;
   const currentMindMap = history[currentIndex];
+  const activePathIds = useMemo(() => {
+    if (selectedNodeIds.length !== 1) return [];
+    return findPathToNode(currentMindMap, selectedNodeIds[0]);
+  }, [currentMindMap, selectedNodeIds]);
 
 
- 
   const [isPanning, setIsPanning] = useState(false);
-  const panStartRef = useRef({ x: 0, y: 0 });
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [isExporting, setIsExporting] = useState(false);
-  const sceneRef = useRef<HTMLDivElement>(null); // Ref 指向我们要截图的区域
+  const [isMarquee, setIsMarquee] = useState(false);
 
-  // handleMouseDown 现在可以正确判断点击目标
+  const [marqueeRect, setMarqueeRect] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const marqueeStartRef = useRef({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const spacebarPressed = useRef(false);
+useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const activeElement = document.activeElement;
+            const isTyping = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+
+            // 规则1：当焦点在输入框时，空格键应正常输入，不触发平移
+            if (isTyping && e.key === ' ') {
+                return;
+            }
+            
+            // 规则2：只要不在输入，空格键就应该阻止默认行为并准备平移
+            if (e.key === ' ') {
+                e.preventDefault(); // 无论如何都阻止滚动
+                if (!spacebarPressed.current) {
+                    spacebarPressed.current = true;
+                    if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+                }
+            }
+
+            // 规则3：快捷键（如删除、撤销）不应在输入时触发（删除键除外，但为简化我们统一处理）
+            if (isTyping) return;
+            
+            const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+                e.preventDefault();
+                dispatch({ type: 'DELETE_SELECTED_NODES' });
+            } else if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                dispatch({ type: 'UNDO' });
+            } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                dispatch({ type: 'REDO' });
+            }
+        };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === ' ') {
+                spacebarPressed.current = false;
+                if (canvasRef.current) canvasRef.current.style.cursor = 'default';
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, [dispatch]);
+  const renderNodes = (node: NodeData): JSX.Element[] => {
+    const elements = [
+      <Node
+        key={node.id}
+        node={node}
+        isHighlighted={activePathIds.includes(node.id)} // 传递高亮状态
+      />
+    ];
+    if (!node.isCollapsed) {
+      node.children.forEach(child => {
+        elements.push(...renderNodes(child));
+      });
+    }
+    return elements;
+  };
+
+  const renderEdges = (node: NodeData): JSX.Element[] => {
+    const elements: JSX.Element[] = [];
+    if (!node.isCollapsed) {
+      node.children.forEach(child => {
+        // 如果父子节点都在路径上，则高亮这条边
+        const isEdgeHighlighted = activePathIds.includes(node.id) && activePathIds.includes(child.id);
+        elements.push(
+          <Edge
+            key={`${node.id}-${child.id}`}
+            fromNode={node}
+            toNode={child}
+            isHighlighted={isEdgeHighlighted} // 传递高亮状态
+          />
+        );
+        elements.push(...renderEdges(child));
+      });
+    }
+    return elements;
+  };
+
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      setIsPanning(true);
-      panStartRef.current = {
-        x: e.clientX - viewState.x,
-        y: e.clientY - viewState.y,
-      };
+    const target = e.target as HTMLElement;
+    if (target.classList.contains(styles.mindMapCanvas) || target.classList.contains(styles.nodeLayer)) {
+      if (spacebarPressed.current || e.button === 1) { // 平移
+        setIsPanning(true);
+        panStartRef.current = { x: e.clientX - viewState.x, y: e.clientY - viewState.y };
+      } else { // 框选
+        setIsMarquee(true);
+        const canvasRect = canvasRef.current!.getBoundingClientRect();
+        const startX = e.clientX - canvasRect.left;
+        const startY = e.clientY - canvasRect.top;
+        marqueeStartRef.current = { x: startX, y: startY };
+        setMarqueeRect({ x: startX, y: startY, width: 0, height: 0 });
+        if (!e.shiftKey) dispatch({ type: 'SET_SELECTED_NODES', payload: [] });
+      }
     }
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isPanning) return;
-    const newX = e.clientX - panStartRef.current.x;
-    const newY = e.clientY - panStartRef.current.y;
-    // 3. 使用 dispatch 更新全局 viewState
-    dispatch({ type: 'SET_VIEW_STATE', payload: { ...viewState, x: newX, y: newY }});
-  }, [isPanning, viewState, dispatch]);
+    if (isPanning) {
+      const newX = e.clientX - panStartRef.current.x;
+      const newY = e.clientY - panStartRef.current.y;
+      dispatch({ type: 'SET_VIEW_STATE', payload: { ...viewState, x: newX, y: newY } });
+    } else if (isMarquee) {
+      const canvasRect = canvasRef.current!.getBoundingClientRect();
+      const mouseX = e.clientX - canvasRect.left;
+      const mouseY = e.clientY - canvasRect.top;
+      const startX = marqueeStartRef.current.x;
+      const startY = marqueeStartRef.current.y;
+      const width = mouseX - startX;
+      const height = mouseY - startY;
+      setMarqueeRect({ x: width > 0 ? startX : mouseX, y: height > 0 ? startY : mouseY, width: Math.abs(width), height: Math.abs(height) });
+    }
+  }, [isPanning, isMarquee, viewState, dispatch]);
 
   const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
+    if (isPanning) setIsPanning(false);
+    if (isMarquee) {
+      setIsMarquee(false);
+      const allNodes = getAllNodes(currentMindMap);
+      const selectedIdsInRect: string[] = [];
+      const canvasRect = canvasRef.current!.getBoundingClientRect();
+      allNodes.forEach(node => {
+        const nodeWidth = (node.size?.width ?? DEFAULT_NODE_WIDTH) * viewState.scale;
+        const nodeHeight = (node.size?.height ?? DEFAULT_NODE_HEIGHT) * viewState.scale;
+        const nodeX_viewport = node.position.x * viewState.scale + viewState.x + canvasRect.left;
+        const nodeY_viewport = node.position.y * viewState.scale + viewState.y + canvasRect.top;
+        if (nodeX_viewport < marqueeRect.x + marqueeRect.width + canvasRect.left && nodeX_viewport + nodeWidth > marqueeRect.x + canvasRect.left &&
+          nodeY_viewport < marqueeRect.y + marqueeRect.height + canvasRect.top && nodeY_viewport + nodeHeight > marqueeRect.y + canvasRect.top) {
+          selectedIdsInRect.push(node.id);
+        }
+      });
+      const currentEvent = window.event as MouseEvent;
+      if (currentEvent?.shiftKey) {
+        dispatch({ type: 'SET_SELECTED_NODES', payload: [...new Set([...selectedNodeIds, ...selectedIdsInRect])] });
+      } else {
+        dispatch({ type: 'SET_SELECTED_NODES', payload: selectedIdsInRect });
+      }
+    }
+  }, [isPanning, isMarquee, currentMindMap, viewState, selectedNodeIds, marqueeRect, dispatch]);
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
 
     const { clientX, clientY, deltaY } = e;
     const zoomFactor = 1.1;
     const newScale = deltaY < 0 ? viewState.scale * zoomFactor : viewState.scale / zoomFactor;
     const clampedScale = Math.max(0.2, Math.min(newScale, 3));
-    
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const mouseX = clientX - rect.left;
     const mouseY = clientY - rect.top;
@@ -95,12 +216,27 @@ const MindMap: React.FC = () => {
     const newX = mouseX - (mouseX - viewState.x) * (clampedScale / viewState.scale);
     const newY = mouseY - (mouseY - viewState.y) * (clampedScale / viewState.scale);
 
-    // 4. 使用 dispatch 更新全局 viewState
-    dispatch({ type: 'SET_VIEW_STATE', payload: { x: newX, y: newY, scale: clampedScale }});
-  };
-  
+    dispatch({ type: 'SET_VIEW_STATE', payload: { x: newX, y: newY, scale: clampedScale } });
+  }, [viewState, dispatch]);
+
+
   useEffect(() => {
-    if (isPanning) {
+    const canvasElement = canvasRef.current;
+    if (canvasElement) {
+      // 添加监听器，并明确设置 passive: false
+      canvasElement.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
+    // 清理函数：当组件卸载时，移除监听器
+    return () => {
+      if (canvasElement) {
+        canvasElement.removeEventListener('wheel', handleWheel);
+      }
+    };
+  }, [handleWheel]);
+
+  useEffect(() => {
+    if (isPanning || isMarquee) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -108,88 +244,35 @@ const MindMap: React.FC = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isPanning, handleMouseMove, handleMouseUp]);
+  }, [isPanning, isMarquee, handleMouseMove, handleMouseUp]);
 
-  const handleExport = useCallback(async () => {
-    const sceneElement = sceneRef.current;
-    if (!sceneElement) {
-      return;
-    }
-    setIsExporting(true);
 
-    try {
-      // a. 计算所有节点的边界
-      const allNodes = getAllNodes(currentMindMap);
-      if (allNodes.length === 0) return;
-
-      const nodePositions = allNodes.map(n => n.position);
-      const minX = Math.min(...nodePositions.map(p => p.x));
-      const minY = Math.min(...nodePositions.map(p => p.y));
-      const maxX = Math.max(...nodePositions.map(p => p.x));
-      const maxY = Math.max(...nodePositions.map(p => p.y));
-      
-      const PADDING = 100; // 在边界外留出一些空白
-      const nodeWidthApproximation = 150; // 节点大致宽度
-      const nodeHeightApproximation = 50; // 节点大致高度
-
-      const contentWidth = maxX - minX + nodeWidthApproximation;
-      const contentHeight = maxY - minY + nodeHeightApproximation;
-
-      // b. 调用 html-to-image
-      const dataUrl = await htmlToImage.toPng(sceneElement, {
-        width: contentWidth + PADDING,
-        height: contentHeight + PADDING,
-        style: {
-          // 暂时移动场景，让所有节点都进入截图区域
-          transform: `translate(${-minX + PADDING / 2}px, ${-minY + PADDING / 2}px) scale(1)`,
-          // 确保背景也被渲染
-          backgroundColor: '#f9f9f9',
-        },
-      });
-
-      // c. 创建链接并触发下载
-      const link = document.createElement('a');
-      link.download = 'mind-map.png';
-      link.href = dataUrl;
-      link.click();
-
-    } catch (error) {
-      console.error('导出失败!', error);
-    } finally {
-      setIsExporting(false);
-    }
-  }, [currentMindMap]);
 
   if (!currentMindMap) return <div>加载中...</div>;
+  const getCursor = () => {
+    // 如果正在平移，显示“抓紧”的手形
+    if (isPanning) {
+      return 'grabbing';
+    }
+    // 如果按下了空格键（准备平移），显示“可抓取”的手形
+    if (spacebarPressed.current) {
+      return 'grab';
+    }
+    // 默认情况下，是普通光标（适用于框选）
+    return 'default';
+  };
 
   return (
     <>
-    <Toolbar onExport={handleExport} isExporting={isExporting} />
-    <div
-      ref={canvasRef}
-      className={styles.mindMapCanvas}
-      onMouseDown={handleMouseDown}
-      onWheel={handleWheel}
-      style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
-    >
-      <div
-      ref={sceneRef}
-        className={styles.mindMapScene}
-        style={{
-          transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`,
-        }}
-      >
-        <svg className={styles.svgLayer}>
-          <g>{renderEdges(currentMindMap)}</g>
-        </svg>
-        <div
-          className={styles.nodeLayer}
-          
-        >
-          {renderNodes(currentMindMap)}
+      <Toolbar />
+      <div ref={canvasRef} className={styles.mindMapCanvas} onMouseDown={handleMouseDown} style={{ cursor: getCursor() }} tabIndex={-1}>
+        <div ref={sceneRef} className={styles.mindMapScene} style={{ transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})` }}>
+          <svg className={styles.svgLayer}><g>{renderEdges(currentMindMap)}</g></svg>
+          <div className={styles.nodeLayer}>{renderNodes(currentMindMap)}</div>
         </div>
+        {isMarquee && <div className={styles.marqueeBox} style={{ left: marqueeRect.x, top: marqueeRect.y, width: marqueeRect.width, height: marqueeRect.height }} />}
       </div>
-    </div>
+      {isPreviewMode && <Preview />}
     </>
   );
 };

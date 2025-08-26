@@ -1,0 +1,60 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(240, 240, 240, 0.95);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.previewToolbar {
+  background-color: #ffffff;
+  padding: 10px 20px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  flex-shrink: 0;
+}
+
+.previewToolbar button {
+  padding: 8px 16px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  background-color: #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.previewToolbar button:hover:not(:disabled) {
+  background-color: #e0e0e0;
+}
+
+.previewContainer {
+  flex-grow: 1;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 20px;
+  
+}
+
+.previewScene {
+  position: relative;
+  background-color: #ffffff;
+  box-shadow: 0 0 20px rgba(0,0,0,0.15);
+}
+
+.svgLayer,
+.nodeLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.svgLayer { z-index: 1; }
+.nodeLayer { z-index: 2; }

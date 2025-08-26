@@ -1,44 +1,35 @@
 import React from 'react';
 import { useMindMap } from '../context/MindMapContext';
-import type { MindMapNode } from '../types';
 import styles from './InspectorPanel.module.css';
-
+import { updateNodeInTree,findNodeInTree } from '../context/MindMapContext';
 
 const DEFAULT_WIDTH = 150;
 const DEFAULT_FONT_SIZE = 16;
 
-// --- 辅助函数 (可以从 Node.tsx 复制或提取到公共文件) ---
-const updateNodeInTree = (rootNode: MindMapNode, nodeId: string, updateFn: (node: MindMapNode) => MindMapNode): MindMapNode => {
-    if (rootNode.id === nodeId) {
-        return updateFn(rootNode);
-    }
-    return {
-        ...rootNode,
-        children: rootNode.children.map(child => updateNodeInTree(child, nodeId, updateFn))
-    };
-};
 
-const findNodeInTree = (node: MindMapNode, id: string): MindMapNode | null => {
-    if (node.id === id) return node;
-    for (const child of node.children) {
-        const found = findNodeInTree(child, id);
-        if (found) return found;
-    }
-    return null;
-}
+
+
 
 // 定义一组可用的图标
 const ICONS = ['⭐', '💡', '🔥', '✔️', '❓', '❌', '🚀'];
 
 const InspectorPanel: React.FC = () => {
     const { state, updateTree } = useMindMap();
-    const { history, currentIndex, selectedNodeId } = state;
+    const { history, currentIndex, selectedNodeIds } = state;
     const currentMindMap = history[currentIndex];
 
-    if (!selectedNodeId) {
+    if (selectedNodeIds.length === 0) {
         return <div className={styles.panel}><p>请选择一个节点</p></div>;
     }
-    
+    if (selectedNodeIds.length > 1) {
+        return (
+            <div className={styles.panel}>
+                <h4>已选中 {selectedNodeIds.length} 个节点</h4>
+                <p>多选模式下暂不支持编辑属性。</p>
+            </div>
+        );
+    }
+    const selectedNodeId = selectedNodeIds[0];
     const selectedNode = findNodeInTree(currentMindMap, selectedNodeId);
 
     if (!selectedNode) {
@@ -92,7 +83,7 @@ const InspectorPanel: React.FC = () => {
             ...node,
             size: {
                 width: property === 'width' ? value : node.size?.width ?? DEFAULT_WIDTH,
-                height: property === 'height' ? value : node.size?.height, // Height can be auto
+                height: property === 'height' ? value : node.size?.height, 
             },
         }));
         updateTree(newTree);
@@ -104,8 +95,6 @@ const InspectorPanel: React.FC = () => {
             ...node,
             notes: notes,
         }));
-        // 注意：为了性能，我们可以在用户停止输入后再调用 updateTree，
-        // 但为了简单和确保撤销/重做能捕获每一个字符，我们暂时在每次改变时都更新。
         updateTree(newTree);
     };
 

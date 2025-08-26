@@ -1,69 +1,51 @@
-# React + TypeScript + Vite
+# MindMapReact
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+一个功能还算完善的React实现的思维导图，提供较为丰富的交互功能和自定义选项。
 
-Currently, two official plugins are available:
+## 功能特性
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 🌌 **无限画布** - 无边界缩放和拖拽的画布空间
+- ↪️ **撤销重做** - 完整的历史操作记录，支持撤销和重做功能
+- 📋 **剪贴板操作** - 支持复制、剪切、粘贴节点操作
+- 🖼️ **图片导出** - 支持将思维导图导出为图片格式
+- 🧭 **路径提示** - 直观的路径导航和节点定位提示
+- 📂 **节点折叠** - 支持收缩和展开子节点，便于管理复杂结构
+- 🎨 **样式自定义** - 支持更改节点样式和连接线类型
+- 🔄 **拖拽排序** - 支持节点间拖拽重新组织层级关系
+- 🎯 **图标插入** - 支持在节点中插入自定义图标
+- ✅ **多选节点** - 支持同时选择多个节点进行批量操作
 
-## Expanding the ESLint configuration
+## 拖拽排序说明
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+本组件支持节点层级调整功能。例如，如果初始状态节点1为根节点，节点2和节点3为其子节点，您可以将节点3拖拽至节点2之后，使节点3成为节点2的子节点，实现动态的层级结构调整。
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 多选、拖拽操作说明
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+鼠标左键按下后拖拽就可以多选节点
+选中多个节点后，您可以对它们进行统一操作，如批量移动、复制、删除
+按住空格键再进行拖拽就可以拖动画布
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+
+## 项目截图
+
+![alt text](image.png)
+
+### 拖拽排序
+
+![alt text](image-1.png)
+
+![alt text](image-2.png)
+
+### 多选操作
+
+![alt text](image-3.png)
+
+## 安装依赖
+```bash
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 启动项目
+```bash
+pnpm run dev
 ```

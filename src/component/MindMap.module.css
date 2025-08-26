@@ -1,4 +1,4 @@
-/* 外层视口容器 */
+
 .mindMapCanvas {
   width: 100%;
   height: 100vh;
@@ -12,15 +12,15 @@
   user-select: none;
 }
 
-/* 内层场景容器 */
+
 .mindMapScene {
   width: 100%;
   height: 100%;
   position: absolute;
   transform-origin: 0 0;
-  /* 【核心修改】让场景层穿透鼠标事件 */
   pointer-events: none;
 }
+
 
 /* SVG 和 Node 的容器层 */
 .svgLayer,
@@ -30,15 +30,24 @@
   left: 0;
   width: 100%;
   height: 100%;
-  /* pointer-events: none; 继承自父级 .mindMapScene */
 }
 
-/* SVG 层在下 */
 .svgLayer {
   z-index: 1;
+  pointer-events: none;
+  overflow: visible;
 }
 
-/* Node 层在上 */
 .nodeLayer {
   z-index: 2;
+  
 }
+
+.marqueeBox {
+  position: absolute;
+  border: 1px solid #007bff;
+  background-color: rgba(0, 123, 255, 0.2);
+  z-index: 9999;
+  pointer-events: none;
+}
+
