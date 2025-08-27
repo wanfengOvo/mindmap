@@ -6,10 +6,15 @@ import Edge from './Edge';
 import styles from './MindMap.module.css';
 import Toolbar from './ToolBar';
 import Preview from './Preview';
+import OutlineView from './OutlineView';
 import { getAllNodes } from '../utils/util';
 export const DEFAULT_NODE_WIDTH = 150;
 export const DEFAULT_NODE_HEIGHT = 50;
-
+export const DEFAULT_FONT_SIZE = 16;
+export interface SnapLines {
+  horizontal?: number[];
+  vertical?: number[];
+}
 
 const findPathToNode = (root: NodeData, nodeId: string): string[] => {
   const findPath = (currentNode: NodeData, path: string[]): string[] | null => {
@@ -35,7 +40,7 @@ const findPathToNode = (root: NodeData, nodeId: string): string[] => {
 // --- 主组件 ---
 const MindMap: React.FC = () => {
   const { state, dispatch } = useMindMap();
-  const { history, currentIndex, viewState, selectedNodeIds, isPreviewMode } = state;
+  const { history, currentIndex, viewState, selectedNodeIds, isPreviewMode,viewMode } = state;
   const currentMindMap = history[currentIndex];
   const activePathIds = useMemo(() => {
     if (selectedNodeIds.length !== 1) return [];
@@ -45,6 +50,7 @@ const MindMap: React.FC = () => {
 
   const [isPanning, setIsPanning] = useState(false);
   const [isMarquee, setIsMarquee] = useState(false);
+  const [snapLines, setSnapLines] = useState<SnapLines>({});
 
   const [marqueeRect, setMarqueeRect] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const panStartRef = useRef({ x: 0, y: 0 });
@@ -52,67 +58,71 @@ const MindMap: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const spacebarPressed = useRef(false);
-useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const activeElement = document.activeElement;
-            const isTyping = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeElement = document.activeElement;
+      const isTyping = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
 
-            // 规则1：当焦点在输入框时，空格键应正常输入，不触发平移
-            if (isTyping && e.key === ' ') {
-                return;
-            }
-            
-            // 规则2：只要不在输入，空格键就应该阻止默认行为并准备平移
-            if (e.key === ' ') {
-                e.preventDefault(); // 无论如何都阻止滚动
-                if (!spacebarPressed.current) {
-                    spacebarPressed.current = true;
-                    if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
-                }
-            }
+      // 规则1：当焦点在输入框时，空格键应正常输入，不触发平移
+      if (isTyping && e.key === ' ') {
+        return;
+      }
 
-            // 规则3：快捷键（如删除、撤销）不应在输入时触发（删除键除外，但为简化我们统一处理）
-            if (isTyping) return;
-            
-            const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-            if (e.key === 'Backspace' || e.key === 'Delete') {
-                e.preventDefault();
-                dispatch({ type: 'DELETE_SELECTED_NODES' });
-            } else if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
-                e.preventDefault();
-                dispatch({ type: 'UNDO' });
-            } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
-                e.preventDefault();
-                dispatch({ type: 'REDO' });
-            }
-        };
+      // 规则2：只要不在输入，空格键就应该阻止默认行为并准备平移
+      if (e.key === ' ') {
+        e.preventDefault(); // 无论如何都阻止滚动
+        if (!spacebarPressed.current) {
+          spacebarPressed.current = true;
+          if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+        }
+      }
 
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === ' ') {
-                spacebarPressed.current = false;
-                if (canvasRef.current) canvasRef.current.style.cursor = 'default';
-            }
-        };
+      // 规则3：快捷键（如删除、撤销）不应在输入时触发（删除键除外，但为简化我们统一处理）
+      if (isTyping) return;
 
-        window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
-    }, [dispatch]);
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        dispatch({ type: 'DELETE_SELECTED_NODES' });
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        dispatch({ type: 'UNDO' });
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        dispatch({ type: 'REDO' });
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') {
+        spacebarPressed.current = false;
+        if (canvasRef.current) canvasRef.current.style.cursor = 'default';
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [dispatch]);
+
+  const allNodes = useMemo(() => getAllNodes(currentMindMap), [currentMindMap]);
   const renderNodes = (node: NodeData): JSX.Element[] => {
+    const otherNodes = allNodes.filter(n => n.id !== node.id);
+
     const elements = [
       <Node
         key={node.id}
         node={node}
-        isHighlighted={activePathIds.includes(node.id)} // 传递高亮状态
+        isHighlighted={activePathIds.includes(node.id)}
+        otherNodes={otherNodes}
+        setSnapLines={setSnapLines}
       />
     ];
-    if (!node.isCollapsed) {
-      node.children.forEach(child => {
-        elements.push(...renderNodes(child));
-      });
+    if (Array.isArray(node.children) && !node.isCollapsed) {
+      node.children.forEach(child => elements.push(...renderNodes(child)));
     }
     return elements;
   };
@@ -262,13 +272,30 @@ useEffect(() => {
     return 'default';
   };
 
+  if (viewMode === 'outline') {
+        return <OutlineView />;
+    }
   return (
     <>
+    <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 101 }}>
+                <button
+                    onClick={() => dispatch({ type: 'SET_VIEW_MODE', payload: 'outline' })}
+                    style={{ padding: '8px 12px', borderRadius: '5px', border: '1px solid #ccc' }}
+                >
+                    切换到大纲
+                </button>
+            </div>
       <Toolbar />
       <div ref={canvasRef} className={styles.mindMapCanvas} onMouseDown={handleMouseDown} style={{ cursor: getCursor() }} tabIndex={-1}>
         <div ref={sceneRef} className={styles.mindMapScene} style={{ transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})` }}>
           <svg className={styles.svgLayer}><g>{renderEdges(currentMindMap)}</g></svg>
           <div className={styles.nodeLayer}>{renderNodes(currentMindMap)}</div>
+          {snapLines.vertical?.map(x => (
+            <div key={`v-${x}`} className={styles.snapLineVertical} style={{ left: x }} />
+          ))}
+          {snapLines.horizontal?.map(y => (
+            <div key={`h-${y}`} className={styles.snapLineHorizontal} style={{ top: y }} />
+          ))}
         </div>
         {isMarquee && <div className={styles.marqueeBox} style={{ left: marqueeRect.x, top: marqueeRect.y, width: marqueeRect.width, height: marqueeRect.height }} />}
       </div>

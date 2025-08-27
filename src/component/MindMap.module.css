@@ -34,7 +34,6 @@
 
 .svgLayer {
   z-index: 1;
-  pointer-events: none;
   overflow: visible;
 }
 
@@ -51,3 +50,23 @@
   pointer-events: none;
 }
 
+
+/* 垂直吸附线 */
+.snapLineVertical {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #ff69b4; 
+  z-index: 5; 
+}
+
+/* 水平吸附线 */
+.snapLineHorizontal {
+  position: absolute;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  background-color: #ff69b4;
+  z-index: 5;
+}

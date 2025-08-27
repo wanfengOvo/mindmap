@@ -26,4 +26,5 @@ export interface MindMapNode {
     height: number;
   };
   notes?: string;
+  edgeLabel?: string;
 }

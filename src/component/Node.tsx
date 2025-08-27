@@ -4,69 +4,74 @@ import { useMindMap } from '../context/MindMapContext';
 import styles from './Node.module.css';
 import { v4 as uuidv4 } from 'uuid';
 import { updateNodeInTree } from '../context/MindMapContext';
-import { getAllNodes } from '../utils/util';
-const DEFAULT_NODE_WIDTH = 150;
-const DEFAULT_FONT_SIZE = 16;
+import type { SnapLines } from './MindMap';
+import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH, DEFAULT_FONT_SIZE } from './MindMap';
 
+const SNAP_THRESHOLD = 6;
 
-
-
-const removeNodeFromTree = (rootNode: NodeData, nodeId: string): NodeData => {
-    return {
-        ...rootNode,
-        children: rootNode.children.filter(child => child.id !== nodeId).map(child => removeNodeFromTree(child, nodeId))
-    };
-};
-
-
-
-const isDescendant = (childId: string, parentNode: NodeData): boolean => {
-    if (parentNode.children.some(child => child.id === childId)) {
-        return true;
-    }
-    for (const child of parentNode.children) {
-        if (isDescendant(childId, child)) {
-            return true;
-        }
-    }
-    return false;
-};
-
-
-const detachNodeFromTree = (rootNode: NodeData, nodeId: string): { newTree: NodeData, detachedNode: NodeData | null } => {
-    let detachedNode: NodeData | null = null;
-    const searchAndRemove = (node: NodeData): NodeData => {
-        const newChildren = [];
-        for (const child of node.children) {
-            if (child.id === nodeId) {
-                detachedNode = child;
-            } else {
-                newChildren.push(searchAndRemove(child));
-            }
-        }
-        return { ...node, children: newChildren };
-    };
-    const newTree = searchAndRemove(rootNode);
-    return { newTree, detachedNode };
-};
-
-
+const DRAG_THRESHOLD = 5; 
 
 
 interface NodeProps {
   node: NodeData;
   isHighlighted?: boolean;
+  otherNodes: NodeData[];
+  setSnapLines: React.Dispatch<React.SetStateAction<SnapLines>>;
 }
 
-const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
+const removeNodeFromTree = (rootNode: NodeData, nodeId: string): NodeData => {
+  return {
+    ...rootNode,
+    children: rootNode.children.filter(child => child.id !== nodeId).map(child => removeNodeFromTree(child, nodeId))
+  };
+};
+
+
+
+const isDescendant = (childId: string, parentNode: NodeData): boolean => {
+  if (parentNode.children.some(child => child.id === childId)) {
+    return true;
+  }
+  for (const child of parentNode.children) {
+    if (isDescendant(childId, child)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+
+const detachNodeFromTree = (rootNode: NodeData, nodeId: string): { newTree: NodeData, detachedNode: NodeData | null } => {
+  let detachedNode: NodeData | null = null;
+  const searchAndRemove = (node: NodeData): NodeData => {
+    const newChildren = [];
+    for (const child of node.children) {
+      if (child.id === nodeId) {
+        detachedNode = child;
+      } else {
+        newChildren.push(searchAndRemove(child));
+      }
+    }
+    return { ...node, children: newChildren };
+  };
+  const newTree = searchAndRemove(rootNode);
+  return { newTree, detachedNode };
+};
+
+
+
+
+const Node: React.FC<NodeProps> = ({ node, isHighlighted, otherNodes, setSnapLines }) => {
   const { state, dispatch, updateTree } = useMindMap();
-  const { history, currentIndex, selectedNodeIds, viewState,dropTargetId } = state;
+  const { history, currentIndex, selectedNodeIds, viewState, dropTargetId } = state;
   const currentMindMap = history[currentIndex];
 
   const [isDragging, setIsDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(node.text);
-  
+
+  const dragActionStarted = useRef(false);
+  const dragStartMousePosition = useRef({ x: 0, y: 0 });
   const nodeRef = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
 
@@ -91,10 +96,10 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
   const handleDoubleClick = () => {
     setIsEditing(true);
   };
-  
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (isEditing || (e.target as HTMLElement).tagName === 'INPUT' || !nodeRef.current) return;
-    dispatch({ type: 'START_COALESCING' });
+
     setIsDragging(true);
 
     const rect = nodeRef.current.getBoundingClientRect();
@@ -103,83 +108,137 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
+    dragStartMousePosition.current = { x: e.clientX, y: e.clientY };
     e.stopPropagation();
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging || !nodeRef.current) return;
+    if (!dragActionStarted.current) {
+        const dx = e.clientX - dragStartMousePosition.current.x;
+        const dy = e.clientY - dragStartMousePosition.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
 
+        // 如果移动距离小于阈值，则忽略此次移动，不视为拖拽
+        if (distance < DRAG_THRESHOLD) {
+            return;
+        }
+        // 一旦超过阈值，就正式启动拖拽操作
+        dispatch({ type: 'START_COALESCING' });
+        dragActionStarted.current = true;
+    }
     const { scale } = viewState;
     const parentCanvas = nodeRef.current.offsetParent as HTMLElement;
     if (!parentCanvas) return;
-
     const parentRect = parentCanvas.getBoundingClientRect();
 
-    // 1. 计算节点左上角在 Viewport 中的目标位置
-    const targetX_viewport = e.clientX - offset.current.x;
-    const targetY_viewport = e.clientY - offset.current.y;
-
-    // 2. 将 Viewport 坐标转换为相对于父容器(Scene)的坐标
-    const targetX_scene = targetX_viewport - parentRect.left;
-    const targetY_scene = targetY_viewport - parentRect.top;
-
-    // 3. 将相对于 Scene 的坐标“反缩放”，得到 style 所需的值
-    const newPosition = {
-        x: targetX_scene / scale,
-        y: targetY_scene / scale
+    const unsnappedPosition = {
+      x: (e.clientX - offset.current.x - parentRect.left) / scale,
+      y: (e.clientY - offset.current.y - parentRect.top) / scale,
     };
 
-    
+    const snappedPosition = { ...unsnappedPosition };
+    const activeSnapLines: SnapLines = { horizontal: [], vertical: [] };
 
-    const newTree = updateNodeInTree(currentMindMap, node.id, n => ({ ...n, position: newPosition }));
+    const draggedNodeWidth = node.size?.width ?? DEFAULT_NODE_WIDTH;
+    const draggedNodeHeight = node.size?.height ?? DEFAULT_NODE_HEIGHT;
+
+
+    let bestSnapX = { dist: Infinity, pos: 0, line: 0 };
+    let bestSnapY = { dist: Infinity, pos: 0, line: 0 };
+
+    const draggedPointsX = [unsnappedPosition.x, unsnappedPosition.x + draggedNodeWidth / 2, unsnappedPosition.x + draggedNodeWidth];
+    const draggedPointsY = [unsnappedPosition.y, unsnappedPosition.y + draggedNodeHeight / 2, unsnappedPosition.y + draggedNodeHeight];
+
+    for (const other of otherNodes) {
+      const otherWidth = other.size?.width ?? DEFAULT_NODE_WIDTH;
+      const otherHeight = other.size?.height ?? DEFAULT_NODE_HEIGHT;
+      const otherPointsX = [other.position.x, other.position.x + otherWidth / 2, other.position.x + otherWidth];
+      const otherPointsY = [other.position.y, other.position.y + otherHeight / 2, other.position.y + otherHeight];
+
+      // 寻找最佳的垂直吸附线 (X轴)
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          const dist = Math.abs(draggedPointsX[i] - otherPointsX[j]);
+          if (dist < bestSnapX.dist) {
+            bestSnapX = { dist, pos: otherPointsX[j] - (draggedPointsX[i] - unsnappedPosition.x), line: otherPointsX[j] };
+          }
+        }
+      }
+      // 寻找最佳的水平吸附线 (Y轴)
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          const dist = Math.abs(draggedPointsY[i] - otherPointsY[j]);
+          if (dist < bestSnapY.dist) {
+            bestSnapY = { dist, pos: otherPointsY[j] - (draggedPointsY[i] - unsnappedPosition.y), line: otherPointsY[j] };
+          }
+        }
+      }
+    }
+
+    // 如果找到了足够近的吸附点，则应用它
+    if (bestSnapX.dist < SNAP_THRESHOLD / scale) {
+      snappedPosition.x = bestSnapX.pos;
+      activeSnapLines.vertical = [bestSnapX.line];
+    }
+    if (bestSnapY.dist < SNAP_THRESHOLD / scale) {
+      snappedPosition.y = bestSnapY.pos;
+      activeSnapLines.horizontal = [bestSnapY.line];
+    }
+    const hasMoved = snappedPosition.x !== node.position.x || snappedPosition.y !== node.position.y;
+
+    if (hasMoved) {
+        const newTree = updateNodeInTree(currentMindMap, node.id, n => ({ ...n, position: snappedPosition }));
+        updateTree(newTree);
+    }
+    // --- 更新状态和 UI ---
+    setSnapLines(activeSnapLines);
+    const newTree = updateNodeInTree(currentMindMap, node.id, n => ({ ...n, position: snappedPosition }));
     updateTree(newTree);
 
-    const allNodes = getAllNodes(currentMindMap);
-    const validTargets = allNodes.filter(n => {
-        // 不能是自己，也不能是自己的后代
-        return n.id !== node.id && !isDescendant(n.id, node);
-    });
-
+    const allNodes = otherNodes.concat([node]); // Re-use already available nodes
+    const validTargets = allNodes.filter(n => n.id !== node.id && !isDescendant(n.id, node));
     let targetFound = false;
     for (const targetNode of validTargets) {
-        const targetElement = document.getElementById(`node-${targetNode.id}`); // 我们需要给节点加上ID
-        if (targetElement) {
-            const rect = targetElement.getBoundingClientRect();
-            if (e.clientX > rect.left && e.clientX < rect.right && e.clientY > rect.top && e.clientY < rect.bottom) {
-                dispatch({ type: 'SET_DROP_TARGET', payload: targetNode.id });
-                targetFound = true;
-                break;
-            }
+      const targetElement = document.getElementById(`node-${targetNode.id}`);
+      if (targetElement) {
+        const rect = targetElement.getBoundingClientRect();
+        if (e.clientX > rect.left && e.clientX < rect.right && e.clientY > rect.top && e.clientY < rect.bottom) {
+          dispatch({ type: 'SET_DROP_TARGET', payload: targetNode.id });
+          targetFound = true;
+          break;
         }
-    }
-
-    if (!targetFound) {
-        dispatch({ type: 'SET_DROP_TARGET', payload: null });
-    }
-
-}, [isDragging, currentMindMap, node, viewState, updateTree, dispatch]);
-
- const handleMouseUp = useCallback(() => {
-    if (isDragging) {
-      dispatch({ type: 'END_COALESCING' });
-      if (dropTargetId) {
-          const { newTree: treeWithoutNode, detachedNode } = detachNodeFromTree(currentMindMap, node.id);
-          if (detachedNode) {
-              const finalTree = updateNodeInTree(treeWithoutNode, dropTargetId, parentNode => ({
-                  ...parentNode,
-                  children: [...parentNode.children, { ...detachedNode, parentId: parentNode.id }]
-              }));
-              // 作为一个独立的操作计入历史
-              updateTree(finalTree); 
-          }
       }
-      
-      // 清理状态
-      dispatch({ type: 'SET_DROP_TARGET', payload: null });
-      setIsDragging(false);
     }
-  }, [isDragging, dispatch, dropTargetId, currentMindMap, node.id, updateTree]);
-  
+    if (!targetFound) {
+      dispatch({ type: 'SET_DROP_TARGET', payload: null });
+    }
+
+  }, [isDragging, currentMindMap, node, otherNodes, setSnapLines, viewState, updateTree, dispatch]);
+
+  const handleMouseUp = useCallback(() => {
+    if (isDragging) {
+      if (dragActionStarted.current) {
+        dispatch({ type: 'END_COALESCING' });
+      }
+      if (dropTargetId) {
+        const { newTree: treeWithoutNode, detachedNode } = detachNodeFromTree(currentMindMap, node.id);
+        if (detachedNode) {
+          const finalTree = updateNodeInTree(treeWithoutNode, dropTargetId, parentNode => ({
+            ...parentNode,
+            children: [...parentNode.children, { ...detachedNode, parentId: parentNode.id }]
+          }));
+          updateTree(finalTree);
+        }
+      }
+      dispatch({ type: 'SET_DROP_TARGET', payload: null });
+      setSnapLines({}); // 清空吸附线
+      setIsDragging(false);
+      dragActionStarted.current = false
+    }
+  }, [isDragging, dispatch, dropTargetId, currentMindMap, node.id, updateTree, setSnapLines]);
+
+
   useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
@@ -234,7 +293,7 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
   const removeNode = () => {
     if (node.id !== 'root') {
       const newTree = removeNodeFromTree(currentMindMap, node.id);
-      dispatch({ type: 'SET_SELECTED_NODE', payload: { id: null } });
+      dispatch({ type: 'SET_SELECTED_NODES', payload: [] });
       updateTree(newTree);
     }
   };
@@ -242,13 +301,13 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
   const handleNotesIconClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     // 找到备注输入框并聚焦
-   dispatch({ type: 'SET_ACTIVE_NOTES_NODE', payload: node.id });
+    dispatch({ type: 'SET_ACTIVE_NOTES_NODE', payload: node.id });
   };
   // --- 渲染 ---
 
   const isSelected = selectedNodeIds.includes(node.id);
   const isDropTarget = dropTargetId === node.id;
-    const nodeClassName = `
+  const nodeClassName = `
     ${styles.node} 
     ${isSelected ? styles.selected : ''} 
     ${isDropTarget ? styles.dropTarget : ''}
@@ -258,7 +317,7 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
 
   return (
     <div
-    id={`node-${node.id}`}
+      id={`node-${node.id}`}
       ref={nodeRef}
       className={nodeClassName.trim()}
       style={{
@@ -278,24 +337,24 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
     >
-        <div className={styles.contentWrapper}>
-            {node.icon && <span className={styles.icon}>{node.icon}</span>}
-            {isEditing ? (
-        <input
-          type="text"
-          value={text}
-          onChange={handleTextChange}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          onClick={(e) => e.stopPropagation()}
-          autoFocus
-          className={styles.input}
-        />
-      ) : (
-        <div className={styles.text}>{node.text}</div>
-      )}
-        </div>
-      
+      <div className={styles.contentWrapper}>
+        {node.icon && <span className={styles.icon}>{node.icon}</span>}
+        {isEditing ? (
+          <input
+            type="text"
+            value={text}
+            onChange={handleTextChange}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            autoFocus
+            className={styles.input}
+          />
+        ) : (
+          <div className={styles.text}>{node.text}</div>
+        )}
+      </div>
+
       <div className={styles.controls}>
         <button onClick={addChildNode}>+</button>
         {node.id !== 'root' && <button onClick={removeNode}>-</button>}
@@ -309,10 +368,10 @@ const Node: React.FC<NodeProps> = ({ node,isHighlighted  }) => {
         </button>
       )}
 
-       {node.notes && (
-          <div className={styles.notesIndicator} onClick={handleNotesIconClick}>
-              📝
-          </div>
+      {node.notes && (
+        <div className={styles.notesIndicator} onClick={handleNotesIconClick}>
+          📝
+        </div>
       )}
     </div>
   );

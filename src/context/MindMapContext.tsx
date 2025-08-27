@@ -52,6 +52,7 @@ interface ViewState {
   scale: number;
 }
 
+type ViewMode='canvas' | 'outline'
 
 // 定义应用的总状态
 interface AppState {
@@ -64,6 +65,7 @@ interface AppState {
   activeNotesNodeId: string | null;
   dropTargetId: string | null
   isPreviewMode: boolean
+  viewMode: ViewMode //新增
 }
 
 // 定义 Action 类型
@@ -81,7 +83,8 @@ type Action =
   | { type: 'SET_ACTIVE_NOTES_NODE'; payload: string | null }
   | { type: 'SET_DROP_TARGET'; payload: string | null }
   | { type: 'CUT_NODES' }
-  | { type: 'TOGGLE_PREVIEW_MODE' }
+  | { type: 'TOGGLE_PREVIEW_MODE' } 
+  | { type: 'SET_VIEW_MODE'; payload: ViewMode }//新增
 
 export const LOCAL_STORAGE_KEY = 'mindMapAppState';
 
@@ -104,7 +107,8 @@ export const initialState: AppState = {
   viewState: { x: 0, y: 0, scale: 1 }, // 新增
   activeNotesNodeId: null,
   dropTargetId: null,
-  isPreviewMode: false
+  isPreviewMode: false,
+  viewMode: 'canvas' //新增
 };
 
 
@@ -113,9 +117,18 @@ export const initializer = (initialValue: AppState): AppState => {
     const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (savedStateJSON) {
       const savedState = JSON.parse(savedStateJSON);
+      // 从保存的历史记录中，找到用户刷新前的最后一个状态
+      const lastActiveMindMap = savedState.history[savedState.currentIndex];
+
+      if (!lastActiveMindMap) {
+          return initialValue;
+      }
+      //将保存的状态合并到默认状态上，以防未来新增字段
       const mergedState = { ...initialValue, ...savedState };
       return {
         ...mergedState,
+        history: [lastActiveMindMap], 
+        currentIndex: 0,             
         selectedNodeIds: [],
         activeNotesNodeId: null,
         isCoalescing: false,
@@ -171,14 +184,14 @@ export const mindMapReducer = (state: AppState, action: Action): AppState => {
 
     case 'UNDO': {
       if (currentIndex > 0) {
-        return { ...state, currentIndex: currentIndex - 1, selectedNodeIds: [] };
+        return { ...state, currentIndex: currentIndex - 1 };
       }
       return state;
     }
 
     case 'REDO': {
       if (currentIndex < history.length - 1) {
-        return { ...state, currentIndex: currentIndex + 1, selectedNodeIds: [] };
+        return { ...state, currentIndex: currentIndex + 1 };
       }
       return state;
     }
@@ -277,6 +290,9 @@ export const mindMapReducer = (state: AppState, action: Action): AppState => {
         selectedNodeIds: [],
       };
     
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.payload };
+
     default:
       return state;
   }

@@ -1,0 +1,69 @@
+.outlineContainer {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #fdfdfd;
+}
+
+.outlineToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.outlineToolbar h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.outlineToolbar button {
+  padding: 8px 16px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  background-color: #f0f0f0;
+  cursor: pointer;
+}
+
+.outlineContent {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.outlineContent ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.outlineItem {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.bullet {
+  margin-right: 8px;
+  color: #aaa;
+}
+
+.outlineText {
+  flex-grow: 1;
+  cursor: pointer;
+}
+
+.outlineInput {
+  flex-grow: 1;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  padding: 4px;
+}
+.dropHighlight {
+  background-color: #e7f3ff;
+  border-radius: 4px;
+}

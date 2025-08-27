@@ -2,8 +2,18 @@
   stroke: #a0a0a0;
   stroke-width: 2px;
   fill: none;
-
   transition: stroke 0.3s ease, stroke-width 0.3s ease;
+  pointer-events: none;
+}
+
+/* 看不见的粗线（点击区域）：只在其“笔画”上响应鼠标事件 */
+.edgeHitbox {
+  stroke: black;
+  stroke-opacity: 0;
+  stroke-width: 20px;
+  fill: none;
+  cursor: pointer;
+  pointer-events: stroke; 
 }
 
 
@@ -27,4 +37,26 @@
   to {
     stroke-dashoffset: 16;
   }
+}
+
+.edgeLabel {
+  background-color: #f9f9f9;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #555;
+  display: inline-block;
+  cursor: pointer;
+  pointer-events: auto; 
+}
+
+.edgeInput {
+  width: 100%;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  padding: 4px;
+  box-sizing: border-box;
+  font-size: 13px;
+  text-align: center;
+  pointer-events: auto;
 }

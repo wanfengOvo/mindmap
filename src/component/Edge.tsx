@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useMindMap } from '../context/MindMapContext';
 import type { MindMapNode } from '../types';
 import styles from './Edge.module.css';
+import { updateNodeInTree } from '../context/MindMapContext';
+import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from './MindMap';
 
-const DEFAULT_NODE_WIDTH = 150;
-const APPROX_NODE_HEIGHT = 50; 
+
+
 
 interface EdgeProps {
   fromNode: MindMapNode;
@@ -12,17 +15,26 @@ interface EdgeProps {
 }
 
 const Edge: React.FC<EdgeProps> = ({ fromNode, toNode, isHighlighted }) => {
+  const { state, updateTree } = useMindMap();
+  const currentMindMap = state.history[state.currentIndex];
+  const [isEditing, setIsEditing] = useState(false);
+  const [labelText, setLabelText] = useState(toNode.edgeLabel || '');
+  useEffect(() => {
+    setLabelText(toNode.edgeLabel || '');
+  }, [toNode.edgeLabel]);
   // --- 中心点和路径计算逻辑保持不变 ---
   const fromWidth = fromNode.size?.width ?? DEFAULT_NODE_WIDTH;
-  const fromHeight = fromNode.size?.height ?? APPROX_NODE_HEIGHT;
+  const fromHeight = fromNode.size?.height ?? DEFAULT_NODE_HEIGHT;
   const toWidth = toNode.size?.width ?? DEFAULT_NODE_WIDTH;
-  const toHeight = toNode.size?.height ?? APPROX_NODE_HEIGHT;
+  const toHeight = toNode.size?.height ?? DEFAULT_NODE_HEIGHT;
 
   const fromX = fromNode.position.x + fromWidth / 2;
   const fromY = fromNode.position.y + fromHeight / 2;
   const toX = toNode.position.x + toWidth / 2;
   const toY = toNode.position.y + toHeight / 2;
 
+  const labelX = (fromX + toX) / 2;
+  const labelY = (fromY + toY) / 2;
   const edgeType = toNode.edgeStyle?.type || 'curved';
   const isDashedInNormalState = toNode.edgeStyle?.dashed || false;
   let pathData = '';
@@ -44,9 +56,70 @@ const Edge: React.FC<EdgeProps> = ({ fromNode, toNode, isHighlighted }) => {
   const pathClassName = [
     styles.edgePath,
     isHighlighted ? styles.highlighted : (isDashedInNormalState ? styles.dashed : '')
-  ].join(' ').trim(); 
+  ].join(' ').trim();
 
-  return <path className={pathClassName} d={pathData} />;
+  const handleDoubleClick = () => {
+    setIsEditing(true);
+  };
+
+  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLabelText(e.target.value);
+  };
+
+  const handleSave = () => {
+    const newTree = updateNodeInTree(currentMindMap, toNode.id, node => ({
+      ...node,
+      edgeLabel: labelText,
+    }));
+    updateTree(newTree);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setLabelText(toNode.edgeLabel || ''); // 取消编辑，恢复原状
+      setIsEditing(false);
+    }
+  };
+  return (
+    <g>
+      <path
+        className={styles.edgeHitbox}
+        d={pathData}
+        onDoubleClick={handleDoubleClick}
+      />
+      <path
+        className={pathClassName}
+        d={pathData}
+      />
+      {(labelText || isEditing) && (
+        <foreignObject x={labelX - 75} y={labelY - 20} width="150" height="40" style={{ pointerEvents: 'none' }}>
+          {isEditing ? (
+            <input
+              type="text"
+
+              className={styles.edgeInput}
+              value={labelText}
+              onChange={handleLabelChange}
+              onBlur={handleSave}
+              onKeyDown={handleKeyDown}
+              autoFocus
+            />
+          ) : (
+            <div
+
+              className={styles.edgeLabel}
+              onDoubleClick={handleDoubleClick}
+            >
+              {labelText}
+            </div>
+          )}
+        </foreignObject>
+      )}
+    </g>
+  );
 };
 
 export default Edge;
